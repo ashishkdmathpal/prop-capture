@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Processing — PropCapture</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="/" class="logo">Prop<span>Capture</span></a>
+    </div>
+  </header>
+
+  <main>
+    <div class="processing-card">
+      <div class="spinner"></div>
+
+      <h2>Processing <span class="file-label">{{ pdf_name }}</span></h2>
+      <p class="info">Running the 3-step extraction pipeline...</p>
+
+      <ul class="steps-list">
+        <li><span class="step-icon">🔍</span> Step 1: Text screening all pages</li>
+        <li><span class="step-icon">👁️</span> Step 2: Vision screening with Groq AI</li>
+        <li><span class="step-icon">📐</span> Step 3: Extracting plan labels &amp; areas</li>
+      </ul>
+
+      <div class="elapsed-counter" id="elapsed-display">
+        Elapsed: <span id="elapsed-seconds">{{ elapsed }}</span>s / ~50s estimated
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const jobId = "{{ job_id }}";
+    let elapsed = {{ elapsed }};
+    const elapsedSpan = document.getElementById('elapsed-seconds');
+
+    // Increment elapsed counter every second
+    const ticker = setInterval(() => {
+      elapsed++;
+      elapsedSpan.textContent = elapsed;
+    }, 1000);
+
+    // Poll the status API every 3 seconds
+    async function pollStatus() {
+      try {
+        const res = await fetch(`/api/status/${jobId}`);
+        const data = await res.json();
+
+        if (data.status === 'done') {
+          clearInterval(ticker);
+          window.location.href = `/results/${jobId}`;
+          return;
+        }
+
+        if (data.status === 'error') {
+          clearInterval(ticker);
+          window.location.href = `/status/${jobId}`;
+          return;
+        }
+      } catch (e) {
+        // network hiccup — keep polling
+      }
+      setTimeout(pollStatus, 3000);
+    }
+
+    // Start polling after a short delay
+    setTimeout(pollStatus, 3000);
+  </script>
+</body>
+</html>

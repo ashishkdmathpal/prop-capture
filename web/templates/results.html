@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Results — PropCapture</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="/" class="logo">Prop<span>Capture</span></a>
+    </div>
+  </header>
+
+  <main>
+    <a href="/" class="back-link">← Upload another PDF</a>
+
+    <!-- Summary Bar -->
+    <div class="summary-bar">
+      <div class="stat">
+        <span class="stat-num">{{ result.unit_plans | length }}</span>
+        <span class="stat-label">Unit Plans</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">{{ result.master_plans | length }}</span>
+        <span class="stat-label">Master Plans</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">{{ result.floor_plans | length }}</span>
+        <span class="stat-label">Floor Plans</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">{{ result.total_plans_found }}</span>
+        <span class="stat-label">Total</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">{{ elapsed }}s</span>
+        <span class="stat-label">Processing Time</span>
+      </div>
+      <div class="pdf-name">📄 {{ pdf_name }}</div>
+    </div>
+
+    <!-- Unit Plans Section -->
+    <div class="section" id="unit-plans-section">
+      <div class="section-header">
+        <h2 class="section-title">Unit Plans</h2>
+        <span class="badge">{{ result.unit_plans | length }}</span>
+
+        {% if bhk_types %}
+        <div class="bhk-filters">
+          <button class="bhk-btn active" onclick="filterBHK('all', this)">All</button>
+          {% for bhk in bhk_types %}
+          <button class="bhk-btn" onclick="filterBHK('{{ bhk }}', this)">{{ bhk }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      {% if result.unit_plans %}
+      <div class="plans-grid" id="unit-plans-grid">
+        {% for plan in result.unit_plans %}
+        <div class="plan-card" data-unit-type="{{ plan.unit_type or '' }}">
+          {% if plan.file_path %}
+          <img
+            src="{{ plan.file_path }}"
+            alt="{{ plan.label or 'unit plan' }}"
+            onclick="openLightbox('{{ plan.file_path }}')"
+            loading="lazy"
+          />
+          {% else %}
+          <div style="height:160px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem;">No image</div>
+          {% endif %}
+          <div class="plan-info">
+            <span class="plan-type-chip chip-unit">Unit Plan</span>
+            <div class="plan-label">{{ plan.label or 'unlabeled' }}</div>
+            <div class="plan-meta">
+              {% if plan.unit_type %}<span>🏠 {{ plan.unit_type }}</span>{% endif %}
+              {% if plan.variant %}<span>{{ plan.variant }}</span>{% endif %}
+              {% if plan.carpet_area %}<span>📐 {{ plan.carpet_area }}</span>{% endif %}
+              {% if plan.tower %}<span>🏗️ {{ plan.tower }}</span>{% endif %}
+              {% if plan.confidence %}<span title="AI confidence">{{ '🟢' if plan.confidence == 'high' else ('🟡' if plan.confidence == 'medium' else '🔴') }} {{ plan.confidence }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No unit plans found in this brochure.</p>
+      {% endif %}
+    </div>
+
+    <!-- Master Plans Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Master Plans</h2>
+        <span class="badge">{{ result.master_plans | length }}</span>
+      </div>
+
+      {% if result.master_plans %}
+      <div class="master-plans-grid">
+        {% for plan in result.master_plans %}
+        <div class="master-plan-card">
+          {% if plan.file_path %}
+          <img
+            src="{{ plan.file_path }}"
+            alt="{{ plan.label or 'master plan' }}"
+            onclick="openLightbox('{{ plan.file_path }}')"
+            loading="lazy"
+          />
+          {% else %}
+          <div style="height:200px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem;">No image</div>
+          {% endif %}
+          <div class="plan-info">
+            <span class="plan-type-chip chip-master">Master Plan</span>
+            <div class="plan-label">{{ plan.label or 'unlabeled' }}</div>
+            {% if plan.notes %}
+            <div class="plan-meta">{{ plan.notes }}</div>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No master plans found in this brochure.</p>
+      {% endif %}
+    </div>
+
+    <!-- Floor Plans Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Floor Plans</h2>
+        <span class="badge">{{ result.floor_plans | length }}</span>
+      </div>
+
+      {% if result.floor_plans %}
+      <div class="plans-grid">
+        {% for plan in result.floor_plans %}
+        <div class="plan-card">
+          {% if plan.file_path %}
+          <img
+            src="{{ plan.file_path }}"
+            alt="{{ plan.label or 'floor plan' }}"
+            onclick="openLightbox('{{ plan.file_path }}')"
+            loading="lazy"
+          />
+          {% else %}
+          <div style="height:160px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem;">No image</div>
+          {% endif %}
+          <div class="plan-info">
+            <span class="plan-type-chip chip-floor">Floor Plan</span>
+            <div class="plan-label">{{ plan.label or 'unlabeled' }}</div>
+            <div class="plan-meta">
+              {% if plan.tower %}<span>🏗️ {{ plan.tower }}</span>{% endif %}
+              {% if plan.floor_range %}<span>📊 {{ plan.floor_range }}</span>{% endif %}
+              {% if plan.confidence %}<span>{{ '🟢' if plan.confidence == 'high' else ('🟡' if plan.confidence == 'medium' else '🔴') }} {{ plan.confidence }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No floor plans found in this brochure.</p>
+      {% endif %}
+    </div>
+
+    <!-- Raw JSON Section -->
+    <div class="section json-section">
+      <details>
+        <summary>📋 Raw JSON Data (plan_data.json)</summary>
+        <pre>{{ json_data }}</pre>
+      </details>
+    </div>
+
+  </main>
+
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+    <span class="lightbox-close" onclick="closeLightbox()">✕</span>
+    <img id="lightbox-img" src="" alt="Full size plan" />
+  </div>
+
+  <script>
+    // ── Lightbox ──
+    function openLightbox(src) {
+      document.getElementById('lightbox-img').src = src;
+      document.getElementById('lightbox').classList.add('open');
+    }
+    function closeLightbox() {
+      document.getElementById('lightbox').classList.remove('open');
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeLightbox();
+    });
+
+    // ── BHK filter ──
+    function filterBHK(bhk, btn) {
+      // Update active button
+      document.querySelectorAll('.bhk-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      // Show/hide cards
+      document.querySelectorAll('#unit-plans-grid .plan-card').forEach(card => {
+        if (bhk === 'all' || card.dataset.unitType === bhk) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PropCapture — PDF to Property Data</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="/" class="logo">Prop<span>Capture</span></a>
+    </div>
+  </header>
+
+  <main>
+    <div class="upload-card">
+      <h1>PDF to Property Data</h1>
+      <p class="subtitle">Upload a real estate brochure PDF to extract unit plans, master plans, and property details.</p>
+
+      {% if error %}
+        <div class="error-msg">{{ error }}</div>
+      {% endif %}
+
+      <form id="upload-form" action="/upload" method="post" enctype="multipart/form-data">
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <div class="icon">📄</div>
+          <p><strong>Click to choose a PDF</strong> or drag &amp; drop here</p>
+          <p>Real estate brochures work best</p>
+          <p class="file-name" id="file-name-display" style="display:none"></p>
+        </div>
+
+        <input type="file" id="file-input" name="file" accept=".pdf" required />
+
+        <br />
+        <button type="submit" class="btn" id="submit-btn" disabled>Extract Plans</button>
+      </form>
+
+      <p style="margin-top:20px; font-size:0.8rem; color:#94a3b8;">
+        Processing takes ~50 seconds &bull; No data stored after session ends
+      </p>
+    </div>
+  </main>
+
+  <script>
+    const fileInput = document.getElementById('file-input');
+    const dropZone = document.getElementById('drop-zone');
+    const fileNameDisplay = document.getElementById('file-name-display');
+    const submitBtn = document.getElementById('submit-btn');
+    const uploadForm = document.getElementById('upload-form');
+
+    function setFile(file) {
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Please select a PDF file.');
+        return;
+      }
+      fileNameDisplay.textContent = '✓ ' + file.name;
+      fileNameDisplay.style.display = 'block';
+      submitBtn.disabled = false;
+    }
+
+    fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        setFile(file);
+      }
+    });
+
+    uploadForm.addEventListener('submit', () => {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Uploading...';
+    });
+  </script>
+</body>
+</html>

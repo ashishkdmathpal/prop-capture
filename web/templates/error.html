@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Error — PropCapture</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="/" class="logo">Prop<span>Capture</span></a>
+    </div>
+  </header>
+
+  <main>
+    <div class="error-card">
+      <h2>Pipeline Error</h2>
+      <p>Something went wrong while processing <strong>{{ pdf_name }}</strong>.</p>
+
+      <p><strong>Error:</strong> {{ error }}</p>
+
+      {% if error_traceback %}
+      <details style="margin-top: 16px;">
+        <summary style="cursor:pointer; color:#dc2626; font-size:0.9rem;">Show traceback</summary>
+        <pre class="traceback">{{ error_traceback }}</pre>
+      </details>
+      {% endif %}
+
+      <br />
+      <a href="/" class="btn">Try another PDF</a>
+    </div>
+  </main>
+</body>
+</html>
