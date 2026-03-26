@@ -237,46 +237,48 @@ def extract_plan_labels(
     if not confirmed_pages:
         return []
 
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     output_dir = Path(output_dir)
     api_key = os.getenv("OPENROUTER_API_KEY")
     doc = fitz.open(pdf_path)
+    MAX_WORKERS = 4
 
     if verbose:
-        print(f"  Extracting labels from {len(confirmed_pages)} confirmed plan pages at {dpi} DPI...")
+        print(f"  Extracting labels from {len(confirmed_pages)} plan pages at {dpi} DPI (parallel={MAX_WORKERS})...")
 
-    results = []
-    used_labels = set()
-
-    for i, page_info in enumerate(confirmed_pages):
+    # Phase 1: Render all pages upfront
+    rendered = {}
+    render_errors = []
+    for page_info in confirmed_pages:
         page_num = page_info.get("page")
-        plan_type = page_info.get("type", "floor_plan")
-
-        if verbose:
-            print(f"  [{i+1}/{len(confirmed_pages)}] Page {page_num} ({plan_type})...", end=" ", flush=True)
-
-        t0 = time.time()
-
-        # Render at high res
         try:
-            img_bytes = render_page_hires(doc, page_num, dpi=dpi)
+            rendered[page_num] = render_page_hires(doc, page_num, dpi=dpi)
         except Exception as e:
-            print(f"RENDER ERROR: {e}")
-            results.append({
+            print(f"  RENDER ERROR page {page_num}: {e}")
+            render_errors.append({
                 "page_num": page_num,
-                "plan_type": plan_type,
+                "plan_type": page_info.get("type", "floor_plan"),
                 "error": str(e),
                 "label": f"page-{page_num}-error",
                 "file_path": None,
             })
-            continue
+    doc.close()
 
-        # Extract labels from OpenRouter
+    # Phase 2: Parallel API calls
+    def _extract_one(page_info):
+        page_num = page_info.get("page")
+        plan_type = page_info.get("type", "floor_plan")
+        img_bytes = rendered.get(page_num)
+        if img_bytes is None:
+            return page_info, None, None
+
+        t0 = time.time()
         try:
             extracted = _call_extract(api_key, img_bytes,
                                       (page_texts or {}).get(page_num, ""),
                                       plan_type, page_num)
         except Exception as e:
-            print(f"API ERROR: {e}")
             extracted = {
                 "page_num": page_num,
                 "plan_type": plan_type,
@@ -284,30 +286,43 @@ def extract_plan_labels(
                 "confidence": "low",
                 "notes": f"api_error: {str(e)[:100]}",
             }
+        elapsed = time.time() - t0
+        return page_info, extracted, elapsed
 
-        # Save the image
+    api_results = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(_extract_one, pi): pi for pi in confirmed_pages if pi.get("page") in rendered}
+        for future in as_completed(futures):
+            page_info, extracted, elapsed = future.result()
+            if extracted is not None:
+                api_results.append((page_info, extracted, elapsed))
+
+    # Phase 3: Sequential save (for label uniqueness) — maintain page order
+    api_results.sort(key=lambda x: x[0].get("page", 0))
+    results = list(render_errors)
+    used_labels = set()
+
+    for page_info, extracted, elapsed in api_results:
+        page_num = page_info.get("page")
+        plan_type = page_info.get("type", "floor_plan")
+        img_bytes = rendered[page_num]
+
         try:
             file_path = _save_plan_image(img_bytes, extracted, output_dir, used_labels)
             extracted["file_path"] = file_path
         except Exception as e:
-            print(f"SAVE ERROR: {e}")
+            print(f"  SAVE ERROR page {page_num}: {e}")
             extracted["file_path"] = None
-
-        elapsed = time.time() - t0
 
         if verbose:
             label = extracted.get("label", "?")
             conf = extracted.get("confidence", "?")
-            print(f"-> {label} [{conf}] ({elapsed:.1f}s)")
+            print(f"  Page {page_num} ({plan_type}) -> {label} [{conf}] ({elapsed:.1f}s)")
 
-        # Merge vision screen info into result
         extracted["vision_type"] = plan_type
         extracted["vision_confidence"] = page_info.get("confidence")
         extracted["vision_note"] = page_info.get("note")
-
         results.append(extracted)
-
-    doc.close()
 
     if verbose:
         saved = [r for r in results if r.get("file_path")]

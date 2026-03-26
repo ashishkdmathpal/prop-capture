@@ -212,9 +212,11 @@ def classify_pages(
 
     doc.close()
 
-    # Process in batches
+    # Build batches
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    batches = []
     all_results = []
-    batch_num = 0
 
     for i in range(0, len(candidate_pages), BATCH_SIZE):
         batch_pages = candidate_pages[i:i + BATCH_SIZE]
@@ -226,7 +228,6 @@ def classify_pages(
                 batch_images.append(rendered[pn])
                 valid_pages.append(pn)
             else:
-                # Page failed to render — mark as other
                 all_results.append({
                     "page": pn,
                     "type": "other",
@@ -234,23 +235,24 @@ def classify_pages(
                     "note": "render_failed"
                 })
 
-        if not valid_pages:
-            continue
+        if valid_pages:
+            batches.append((valid_pages, batch_images))
 
-        batch_num += 1
+    # Run all batch API calls in parallel
+    MAX_WORKERS = 4
+
+    def _process_batch(batch_idx, valid_pages, batch_images):
         t_batch = time.time()
-
         try:
             batch_results = _call_classify(api_key, valid_pages, batch_images)
+            batch_time = time.time() - t_batch
 
             # Normalize and validate results
-            # Handle both int keys (28) and string keys ("Page 28" or "28")
             result_map = {}
             for r in batch_results:
                 if not isinstance(r, dict):
                     continue
                 raw_page = r.get("page")
-                # Normalize to int: "Page 28" -> 28, "28" -> 28, 28 -> 28
                 if isinstance(raw_page, str):
                     raw_page = re.sub(r"[^0-9]", "", raw_page)
                     try:
@@ -260,36 +262,47 @@ def classify_pages(
                 if isinstance(raw_page, (int, float)):
                     result_map[int(raw_page)] = r
 
+            page_results = []
             for pn in valid_pages:
                 if pn in result_map:
                     r = result_map[pn]
-                    # Normalize type
                     if r.get("type") not in VALID_TYPES:
                         r["type"] = "other"
-                    r["page"] = pn  # ensure int
-                    all_results.append(r)
+                    r["page"] = pn
+                    page_results.append(r)
                 else:
-                    all_results.append({
+                    page_results.append({
                         "page": pn,
                         "type": "other",
                         "confidence": "low",
                         "note": "missing_from_response"
                     })
 
-            batch_time = time.time() - t_batch
-            if verbose:
-                classified = {r["page"]: r["type"] for r in batch_results if isinstance(r, dict)}
-                print(f"  Batch {batch_num}: pages {valid_pages} -> {classified} ({batch_time:.1f}s)")
-
+            return batch_idx, valid_pages, page_results, batch_results, batch_time, None
         except Exception as e:
-            print(f"    Error in batch {batch_num}: {e}")
-            for pn in valid_pages:
-                all_results.append({
-                    "page": pn,
-                    "type": "other",
-                    "confidence": "low",
-                    "note": f"api_error: {str(e)[:100]}"
-                })
+            batch_time = time.time() - t_batch
+            fallback = [{
+                "page": pn,
+                "type": "other",
+                "confidence": "low",
+                "note": f"api_error: {str(e)[:100]}"
+            } for pn in valid_pages]
+            return batch_idx, valid_pages, fallback, [], batch_time, e
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {
+            executor.submit(_process_batch, idx, vp, bi): idx
+            for idx, (vp, bi) in enumerate(batches)
+        }
+        for future in as_completed(futures):
+            batch_idx, valid_pages, page_results, batch_results, batch_time, error = future.result()
+            all_results.extend(page_results)
+            if verbose:
+                if error:
+                    print(f"    Error in batch {batch_idx+1}: {error}")
+                else:
+                    classified = {r["page"]: r["type"] for r in batch_results if isinstance(r, dict)}
+                    print(f"  Batch {batch_idx+1}: pages {valid_pages} -> {classified} ({batch_time:.1f}s)")
 
     # Sort by page number
     all_results.sort(key=lambda x: x.get("page", 0))

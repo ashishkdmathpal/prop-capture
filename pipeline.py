@@ -154,16 +154,24 @@ def run_pipeline(
         return {"error": "no_extractable_pages", "log": log}
 
     # ------------------------------------------------------------------
-    # Step 3a: Plan extraction (existing)
+    # Step 3: Plan + Image extraction (parallel)
     # ------------------------------------------------------------------
-    plan_results = []
-    if plan_pages:
-        if step_callback:
-            step_callback(3, "Extracting floor plan labels")
-        print(f"\nStep 3a: Extracting plan labels from {len(plan_pages)} pages (DPI={dpi})...")
-        t3a = time.time()
+    from concurrent.futures import ThreadPoolExecutor
 
-        plan_results = extract_plan_labels(
+    all_image_pages = image_pages + data_pages
+
+    if step_callback:
+        step_callback(3, "Extracting plans + images (parallel)")
+    print(f"\nStep 3: Extracting plans ({len(plan_pages)} pages) + images ({len(all_image_pages)} pages) in parallel (DPI={dpi})...")
+    t3 = time.time()
+
+    plan_results = []
+    image_results = []
+
+    def _run_plans():
+        if not plan_pages:
+            return []
+        return extract_plan_labels(
             pdf_path=pdf_path,
             confirmed_pages=plan_pages,
             output_dir=out_dir,
@@ -172,28 +180,10 @@ def run_pipeline(
             verbose=verbose,
         )
 
-        elapsed3a = time.time() - t3a
-        log["steps"]["plan_extraction"] = {
-            "time_s": round(elapsed3a, 2),
-            "pages_processed": len(plan_pages),
-            "images_saved": len([r for r in plan_results if r.get("file_path")]),
-        }
-    else:
-        print("\nStep 3a: No plan pages to extract (skipping)")
-        log["steps"]["plan_extraction"] = {"time_s": 0, "pages_processed": 0, "images_saved": 0}
-
-    # ------------------------------------------------------------------
-    # Step 3b: Image extraction (new)
-    # ------------------------------------------------------------------
-    image_results = []
-    all_image_pages = image_pages + data_pages
-    if all_image_pages:
-        if step_callback:
-            step_callback(4, "Extracting property images")
-        print(f"\nStep 3b: Extracting image labels from {len(all_image_pages)} pages (DPI={dpi})...")
-        t3b = time.time()
-
-        image_results = extract_image_labels(
+    def _run_images():
+        if not all_image_pages:
+            return []
+        return extract_image_labels(
             pdf_path=pdf_path,
             confirmed_pages=all_image_pages,
             output_dir=out_dir,
@@ -202,15 +192,24 @@ def run_pipeline(
             verbose=verbose,
         )
 
-        elapsed3b = time.time() - t3b
-        log["steps"]["image_extraction"] = {
-            "time_s": round(elapsed3b, 2),
-            "pages_processed": len(all_image_pages),
-            "images_saved": len([r for r in image_results if r.get("file_path")]),
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        plan_future = executor.submit(_run_plans)
+        image_future = executor.submit(_run_images)
+        plan_results = plan_future.result()
+        image_results = image_future.result()
+
+    elapsed3 = time.time() - t3
+
+    log["steps"]["plan_extraction"] = {
+        "time_s": round(elapsed3, 2),
+        "pages_processed": len(plan_pages),
+        "images_saved": len([r for r in plan_results if r.get("file_path")]),
+    }
+    log["steps"]["image_extraction"] = {
+        "time_s": round(elapsed3, 2),
+        "pages_processed": len(all_image_pages),
+        "images_saved": len([r for r in image_results if r.get("file_path")]),
         }
-    else:
-        print("\nStep 3b: No image pages to extract (skipping)")
-        log["steps"]["image_extraction"] = {"time_s": 0, "pages_processed": 0, "images_saved": 0}
 
     # ------------------------------------------------------------------
     # Save plan_data.json
