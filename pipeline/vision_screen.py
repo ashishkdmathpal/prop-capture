@@ -28,7 +28,7 @@ import requests
 # ---------------------------------------------------------------------------
 
 VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 BATCH_SIZE = 4   # images per API call (keep small for reliability)
 SCREEN_DPI = 100  # thumbnail DPI for fast classification
 
@@ -131,7 +131,7 @@ def _call_classify(api_key: str, page_nums: list[int], image_bytes_list: list[by
     content.append({"type": "text", "text": prompt})
 
     response = requests.post(
-        OPENROUTER_URL,
+        GROQ_URL,
         headers={"Authorization": f"Bearer {api_key}"},
         json={
             "model": VISION_MODEL,
@@ -190,7 +190,7 @@ def classify_pages(
     if not candidate_pages:
         return []
 
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
     doc = fitz.open(pdf_path)
 
     if verbose:

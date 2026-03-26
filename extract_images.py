@@ -29,7 +29,7 @@ import fitz  # PyMuPDF
 # ---------------------------------------------------------------------------
 
 VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 EXTRACT_DPI = 150   # higher quality for extraction
 
 IMAGE_TYPE_DIR_MAP = {
@@ -109,7 +109,7 @@ def _call_extract_image(
     )
 
     response = requests.post(
-        OPENROUTER_URL,
+        GROQ_URL,
         headers={"Authorization": f"Bearer {api_key}"},
         json={
             "model": VISION_MODEL,
@@ -236,7 +236,7 @@ def extract_image_labels(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     output_dir = Path(output_dir)
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
     doc = fitz.open(pdf_path)
     MAX_WORKERS = 4
 
