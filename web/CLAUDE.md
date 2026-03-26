@@ -1,6 +1,6 @@
 # prop-capture-web
 
-FastAPI web interface for the prop-capture pipeline. Upload a real estate PDF brochure and view extracted unit plans, master plans, floor plans, and property images in the browser.
+FastAPI web interface for the prop-capture pipeline. Upload a real estate PDF brochure and view all extracted property images: unit plans, master plans, floor plans, amenity renders, exteriors, interiors, location maps, spec tables, and lifestyle photos.
 
 ## Live URL
 
@@ -38,7 +38,7 @@ GET /results/<job_id> → renders results.html with images + JSON
 |-----|----------|---------|
 | `/` | `index.html` | PDF upload form |
 | `/status/<job_id>` | `processing.html` | Auto-polling wait page |
-| `/results/<job_id>` | `results.html` | Extracted images + raw JSON |
+| `/results/<job_id>` | `results.html` | Extracted images + raw JSON (9 sections: Unit Plans, Master Plans, Floor Plans, Amenity, Exterior, Interior, Location, Specs, Lifestyle) |
 | `/output/<job_id>/...` | StaticFiles | Serve extracted images |
 
 ## Files
@@ -50,7 +50,8 @@ GET /results/<job_id> → renders results.html with images + JSON
 | `templates/processing.html` | Processing wait page (auto-refresh every 3s) |
 | `templates/results.html` | Results display: image grids + JSON viewer |
 | `templates/error.html` | Error page |
-| `static/style.css` | Minimal CSS (~280 lines) |
+| `static/style.css` | CSS — includes chip colors: chip-amenity/exterior/interior/location/spec/lifestyle |
+| `timing_stats.json` | Auto-generated — last 20 run timings for dynamic processing estimate |
 | `requirements.txt` | Python dependencies |
 | `start.sh` | PM2 startup script |
 | `uploads/` | Temporary uploaded PDFs (gitignored) |
@@ -80,8 +81,20 @@ from pipeline import run_pipeline
 result = run_pipeline(pdf_path, output_base=f"output/{job_id}")
 ```
 
-The pipeline writes images to `output/<job_id>/<pdf_stem>/unit-plan/`, `master-plan/`, etc.
-Images are served at `/output/<job_id>/<pdf_stem>/unit-plan/filename.jpg`.
+The pipeline writes images to `output/<job_id>/<pdf_stem>/unit-plan/`, `master-plan/`, `amenity/`, `exterior/`, `interior/`, `location/`, `lifestyle/`, `specification/`, etc.
+Images are served at `/output/<job_id>/<pdf_stem>/<type>/filename.jpg`.
+
+The `run_pipeline_thread()` function fixes all file paths for all image arrays:
+`unit_plans`, `master_plans`, `floor_plans`, `amenity_images`, `exterior_images`, `interior_images`, `location_images`, `lifestyle_images`, `specification_tables`
+
+### timing_stats.json
+
+`timing_stats.json` tracks the last 20 pipeline run times:
+```json
+{"runs": [{"pdf_pages": 50, "total_time_s": 79.0, "ts": "2026-03-26T...Z"}, ...]}
+```
+The processing page reads this to show a dynamic estimate ("Typically 55–103 seconds").
+Updated automatically at the end of each `run_pipeline()` call.
 
 ## Auth
 

@@ -5,7 +5,9 @@ Renders candidate pages as thumbnails (100 DPI) and sends them in batches
 to llama-4-scout for fast, cheap classification.
 
 Classifies each page as:
-  unit_plan / master_plan / floor_plan / area_table / other
+  unit_plan / master_plan / floor_plan / area_table /
+  amenity_image / exterior_image / interior_image /
+  location_map / specification_table / lifestyle_image / other
 """
 
 import os
@@ -34,24 +36,41 @@ CLASSIFY_PROMPT = """You are analyzing pages from an Indian real estate property
 I will show you {n} page images, labeled Page {page_list}.
 
 For EACH page, classify it as exactly ONE of:
-- "unit_plan": Architectural floor plan drawing of a single apartment/unit — shows individual rooms (bedroom, living room, kitchen, bathroom) with dimensions or area labels
+- "unit_plan": Architectural floor plan drawing of a single apartment/unit -- shows individual rooms with dimensions
 - "floor_plan": Architectural drawing showing an entire building floor with MULTIPLE units laid out
-- "master_plan": Site layout map showing the overall project — building placements, amenities locations, landscaping, roads, towers labeled on a bird's-eye view map
-- "area_table": A table of numbers/areas/prices/specifications BUT with NO visual architectural drawing
-- "other": Marketing page, property photo, decorative content, text block, logo, or anything else
+- "master_plan": Site layout map showing the overall project -- bird's-eye view with building placements, amenities, towers
+- "amenity_image": Photo/render of a project amenity -- swimming pool, gym, clubhouse, banquet hall, garden, play area, sky deck, terrace, games room
+- "exterior_image": Photo/render of building exterior, entrance lobby exterior, tower facade, aerial view of buildings, retail podium
+- "interior_image": Photo/render of apartment interior -- bedroom, living room, kitchen, dining area, bathroom
+- "location_map": Map showing distances/travel times to nearby locations (schools, hospitals, malls, IT parks)
+- "specification_table": Table listing specifications (flooring, bathrooms, kitchen finishes, doors, windows) or payment milestones
+- "lifestyle_image": Photo showing people enjoying amenities or balcony views -- lifestyle/aspirational marketing photo with people as focus
+- "area_table": A table of ONLY apartment areas/prices with NO visual architectural drawing or photo
+- "other": Cover page, section divider, logos, certificates, marketing text without significant images, back page, blank pages
 
-Return ONLY a valid JSON array (no markdown, no explanation) with one entry per page, in the order shown:
+Return ONLY a valid JSON array (no markdown, no explanation) with one entry per page:
 [{{"page": 26, "type": "unit_plan", "confidence": "high", "note": "3BHK floor plan with room labels"}}, ...]
 
 Rules:
-- A page with ONLY a table of numbers and NO floor plan drawing = "area_table"
-- A page showing a single apartment's internal layout = "unit_plan"
-- A page with a bird's-eye project map = "master_plan"
+- If a page has BOTH a photo and some text headline, classify by the dominant visual content (the photo), not the text
+- A page with a render of a swimming pool = "amenity_image", not "lifestyle_image"
+- A page with a person on a balcony = "lifestyle_image"
+- A page showing the full building from outside = "exterior_image"
+- A page with just text (no large photo or diagram) = "other"
+- When in doubt between amenity_image and exterior_image, if you can see multiple building towers, it's exterior_image
 - When in doubt between unit_plan and floor_plan, prefer unit_plan if you see individual room labels
 """
 
-VALID_TYPES = {"unit_plan", "master_plan", "floor_plan", "area_table", "other"}
+VALID_TYPES = {
+    "unit_plan", "master_plan", "floor_plan",
+    "amenity_image", "exterior_image", "interior_image",
+    "location_map", "specification_table", "lifestyle_image",
+    "area_table", "other",
+}
 PLAN_TYPES = {"unit_plan", "master_plan", "floor_plan"}
+IMAGE_TYPES = {"amenity_image", "exterior_image", "interior_image", "location_map", "lifestyle_image"}
+DATA_TYPES = {"specification_table", "area_table"}
+EXTRACTABLE_TYPES = PLAN_TYPES | IMAGE_TYPES | DATA_TYPES
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +132,7 @@ def _call_groq_classify(client: Groq, page_nums: list[int], image_bytes_list: li
     response = client.chat.completions.create(
         model=VISION_MODEL,
         messages=[{"role": "user", "content": content}],
-        max_tokens=500,
+        max_tokens=800,
         temperature=0.1,
     )
 
@@ -271,7 +290,9 @@ def classify_pages(
 
     if verbose:
         plan_pages = [r for r in all_results if r["type"] in PLAN_TYPES]
-        print(f"  Vision screen complete: {len(plan_pages)}/{len(candidate_pages)} confirmed plan pages")
+        image_pages = [r for r in all_results if r["type"] in IMAGE_TYPES]
+        data_pages = [r for r in all_results if r["type"] in DATA_TYPES]
+        print(f"  Vision screen complete: {len(plan_pages)} plan, {len(image_pages)} image, {len(data_pages)} data pages / {len(candidate_pages)} candidates")
 
     return all_results
 
@@ -297,4 +318,8 @@ if __name__ == "__main__":
         print(f"  Page {r['page']:>2}: {r['type']:<12} ({r.get('confidence','?')}) — {r.get('note','')}")
 
     plans = [r for r in results if r["type"] in PLAN_TYPES]
+    images = [r for r in results if r["type"] in IMAGE_TYPES]
+    data = [r for r in results if r["type"] in DATA_TYPES]
     print(f"\nPlan pages: {[r['page'] for r in plans]}")
+    print(f"Image pages: {[r['page'] for r in images]}")
+    print(f"Data pages: {[r['page'] for r in data]}")

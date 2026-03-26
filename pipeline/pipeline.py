@@ -1,5 +1,5 @@
 """
-pipeline.py — prop-capture v2: extract unit/master/floor plans from real estate PDFs.
+pipeline.py — prop-capture v2: extract all property images from real estate PDFs.
 
 Usage:
     python pipeline.py input/brochure.pdf
@@ -7,17 +7,24 @@ Usage:
     python pipeline.py input/brochure.pdf --output-dir /tmp/output
 
 Pipeline:
-    Step 1: Text screening (screen.py)       — 0 API calls, ~0.1s
-    Step 2: Vision screening (vision_screen.py) — Groq llama-4-scout, ~5-10s
-    Step 3: Plan extraction (extract_plans.py)  — Groq llama-4-scout, ~20-40s
+    Step 1: Text screening (screen.py)         — 0 API calls, ~0.1s
+    Step 2: Vision screening (vision_screen.py) — Groq llama-4-scout, ~10-15s
+    Step 3a: Plan extraction (extract_plans.py) — Groq llama-4-scout, ~40s
+    Step 3b: Image extraction (extract_images.py) — Groq llama-4-scout, ~50s
 
 Output:
     output/<pdf_name>/
     ├── unit-plan/      ← individual apartment floor plans
     ├── master-plan/    ← site/project layout maps
     ├── floor-plan/     ← whole building floors (multiple units)
+    ├── amenity/        ← pool, gym, clubhouse, garden, play area renders
+    ├── exterior/       ← building facade, entrance, aerial renders
+    ├── interior/       ← bedroom, living room, kitchen renders
+    ├── location/       ← distance/connectivity maps
+    ├── lifestyle/      ← lifestyle photos with people
+    ├── specification/  ← spec tables, payment plans
     ├── pages/          ← reference page renders (if pre-rendered)
-    └── plan_data.json  ← structured metadata for all plans found
+    └── plan_data.json  ← structured metadata for all images found
 """
 
 import argparse
@@ -30,8 +37,9 @@ from dotenv import load_dotenv
 load_dotenv("/root/.secrets.env")
 
 from screen import screen_pages
-from vision_screen import classify_pages, PLAN_TYPES
+from vision_screen import classify_pages, PLAN_TYPES, IMAGE_TYPES, DATA_TYPES
 from extract_plans import extract_plan_labels
+from extract_images import extract_image_labels
 
 
 def run_pipeline(
@@ -41,16 +49,16 @@ def run_pipeline(
     verbose: bool = True,
 ) -> dict:
     """
-    Full v2 pipeline: PDF -> text screen -> vision screen -> plan extraction.
+    Full pipeline: PDF -> text screen -> vision screen -> plan + image extraction.
 
     Args:
         pdf_path:    Path to the input PDF file
         output_base: Base directory for output (default: "output")
-        dpi:         DPI for high-res plan renders in step 3 (default: 150)
+        dpi:         DPI for high-res renders in step 3 (default: 150)
         verbose:     Print progress to stdout
 
     Returns:
-        Summary dict with plan counts, file paths, and pipeline timing.
+        Summary dict with all image counts, file paths, and pipeline timing.
     """
     pdf_path = str(pdf_path)
     pdf_stem = Path(pdf_path).stem
@@ -66,7 +74,7 @@ def run_pipeline(
     }
 
     print(f"\n{'='*60}")
-    print(f"prop-capture pipeline")
+    print(f"prop-capture pipeline v2 (all property images)")
     print(f"Input:  {pdf_path}")
     print(f"Output: {out_dir}")
     print(f"{'='*60}\n")
@@ -112,47 +120,87 @@ def run_pipeline(
     )
 
     plan_pages = [p for p in classified if p.get("type") in PLAN_TYPES]
-    non_plan = [p for p in classified if p.get("type") not in PLAN_TYPES]
+    image_pages = [p for p in classified if p.get("type") in IMAGE_TYPES]
+    data_pages = [p for p in classified if p.get("type") in DATA_TYPES]
+    other_pages = [p for p in classified if p.get("type") not in PLAN_TYPES | IMAGE_TYPES | DATA_TYPES]
 
     elapsed2 = time.time() - t2
     log["steps"]["vision_screen"] = {
         "time_s": round(elapsed2, 2),
         "classified": len(classified),
         "plan_pages": len(plan_pages),
+        "image_pages": len(image_pages),
+        "data_pages": len(data_pages),
         "plan_page_nums": [p["page"] for p in plan_pages],
-        "non_plan_page_nums": [p["page"] for p in non_plan],
+        "image_page_nums": [p["page"] for p in image_pages + data_pages],
+        "other_page_nums": [p["page"] for p in other_pages],
     }
 
-    print(f"\n  {len(plan_pages)}/{len(candidate_page_nums)} confirmed plan pages in {elapsed2:.1f}s")
-    print(f"  Plan pages: {[p['page'] for p in plan_pages]}")
-    if non_plan:
-        print(f"  Filtered out: {[p['page'] for p in non_plan]} ({[p.get('type') for p in non_plan]})")
+    print(f"\n  Classification in {elapsed2:.1f}s:")
+    print(f"  Plan pages:   {[p['page'] for p in plan_pages]}")
+    print(f"  Image pages:  {[p['page'] for p in image_pages]} ({[p.get('type') for p in image_pages]})")
+    print(f"  Data pages:   {[p['page'] for p in data_pages]} ({[p.get('type') for p in data_pages]})")
+    if other_pages:
+        print(f"  Other (skip): {[p['page'] for p in other_pages]}")
 
-    if not plan_pages:
-        print("  No plan pages confirmed — nothing to extract.")
-        return {"error": "no_plan_pages", "log": log}
+    if not plan_pages and not image_pages and not data_pages:
+        print("  Nothing extractable found.")
+        return {"error": "no_extractable_pages", "log": log}
 
     # ------------------------------------------------------------------
-    # Step 3: Plan extraction (Groq)
+    # Step 3a: Plan extraction (existing)
     # ------------------------------------------------------------------
-    print(f"\nStep 3/3: Extracting plan labels from {len(plan_pages)} pages (DPI={dpi})...")
-    t3 = time.time()
+    plan_results = []
+    if plan_pages:
+        print(f"\nStep 3a: Extracting plan labels from {len(plan_pages)} pages (DPI={dpi})...")
+        t3a = time.time()
 
-    results = extract_plan_labels(
-        pdf_path=pdf_path,
-        confirmed_pages=plan_pages,
-        output_dir=out_dir,
-        page_texts=page_texts,
-        dpi=dpi,
-        verbose=verbose,
-    )
+        plan_results = extract_plan_labels(
+            pdf_path=pdf_path,
+            confirmed_pages=plan_pages,
+            output_dir=out_dir,
+            page_texts=page_texts,
+            dpi=dpi,
+            verbose=verbose,
+        )
 
-    elapsed3 = time.time() - t3
-    log["steps"]["plan_extraction"] = {
-        "time_s": round(elapsed3, 2),
-        "pages_processed": len(plan_pages),
-        "images_saved": len([r for r in results if r.get("file_path")]),
-    }
+        elapsed3a = time.time() - t3a
+        log["steps"]["plan_extraction"] = {
+            "time_s": round(elapsed3a, 2),
+            "pages_processed": len(plan_pages),
+            "images_saved": len([r for r in plan_results if r.get("file_path")]),
+        }
+    else:
+        print("\nStep 3a: No plan pages to extract (skipping)")
+        log["steps"]["plan_extraction"] = {"time_s": 0, "pages_processed": 0, "images_saved": 0}
+
+    # ------------------------------------------------------------------
+    # Step 3b: Image extraction (new)
+    # ------------------------------------------------------------------
+    image_results = []
+    all_image_pages = image_pages + data_pages
+    if all_image_pages:
+        print(f"\nStep 3b: Extracting image labels from {len(all_image_pages)} pages (DPI={dpi})...")
+        t3b = time.time()
+
+        image_results = extract_image_labels(
+            pdf_path=pdf_path,
+            confirmed_pages=all_image_pages,
+            output_dir=out_dir,
+            page_texts=page_texts,
+            dpi=dpi,
+            verbose=verbose,
+        )
+
+        elapsed3b = time.time() - t3b
+        log["steps"]["image_extraction"] = {
+            "time_s": round(elapsed3b, 2),
+            "pages_processed": len(all_image_pages),
+            "images_saved": len([r for r in image_results if r.get("file_path")]),
+        }
+    else:
+        print("\nStep 3b: No image pages to extract (skipping)")
+        log["steps"]["image_extraction"] = {"time_s": 0, "pages_processed": 0, "images_saved": 0}
 
     # ------------------------------------------------------------------
     # Save plan_data.json
@@ -160,21 +208,45 @@ def run_pipeline(
     total_time = time.time() - t_pipeline_start
     log["total_time_s"] = round(total_time, 2)
 
-    unit_plans = [r for r in results if r.get("plan_type") == "unit_plan"]
-    master_plans = [r for r in results if r.get("plan_type") == "master_plan"]
-    floor_plans = [r for r in results if r.get("plan_type") == "floor_plan"]
+    unit_plans = [r for r in plan_results if r.get("plan_type") == "unit_plan"]
+    master_plans = [r for r in plan_results if r.get("plan_type") == "master_plan"]
+    floor_plans = [r for r in plan_results if r.get("plan_type") == "floor_plan"]
+
+    amenity_images = [r for r in image_results if r.get("image_type") == "amenity_image"]
+    exterior_images = [r for r in image_results if r.get("image_type") == "exterior_image"]
+    interior_images = [r for r in image_results if r.get("image_type") == "interior_image"]
+    location_images = [r for r in image_results if r.get("image_type") == "location_map"]
+    lifestyle_images = [r for r in image_results if r.get("image_type") == "lifestyle_image"]
+    specification_tables = [r for r in image_results if r.get("image_type") == "specification_table"]
 
     summary = {
         "pdf_source": pdf_stem,
         "total_pages": screen_result["total_pages"],
         "candidate_pages": candidate_page_nums,
         "confirmed_plan_pages": [p["page"] for p in plan_pages],
+        "confirmed_image_pages": [p["page"] for p in all_image_pages],
+        # Plan arrays (existing structure unchanged)
         "unit_plans": unit_plans,
         "master_plans": master_plans,
         "floor_plans": floor_plans,
-        "total_plans_found": len(results),
+        # New image arrays
+        "amenity_images": amenity_images,
+        "exterior_images": exterior_images,
+        "interior_images": interior_images,
+        "location_images": location_images,
+        "lifestyle_images": lifestyle_images,
+        "specification_tables": specification_tables,
+        # Totals
+        "total_plans_found": len(plan_results),
+        "total_images_found": len(image_results),
         "pipeline_log": log,
     }
+
+    # Write timing stats for dynamic time display in web UI
+    _append_timing_stats(
+        total_time_s=total_time,
+        total_pages=screen_result["total_pages"],
+    )
 
     plan_data_file = out_dir / "plan_data.json"
     with open(plan_data_file, "w", encoding="utf-8") as f:
@@ -186,16 +258,51 @@ def run_pipeline(
     print(f"\n{'='*60}")
     print(f"Done!")
     print(f"{'='*60}")
-    print(f"  Unit plans:   {len(unit_plans)}")
-    print(f"  Master plans: {len(master_plans)}")
-    print(f"  Floor plans:  {len(floor_plans)}")
-    print(f"  Total:        {len(results)}")
-    print(f"  Time:         {total_time:.1f}s")
-    print(f"  Output:       {out_dir}/")
-    print(f"  plan_data:    {plan_data_file}")
+    print(f"  Unit plans:      {len(unit_plans)}")
+    print(f"  Master plans:    {len(master_plans)}")
+    print(f"  Floor plans:     {len(floor_plans)}")
+    print(f"  Amenity images:  {len(amenity_images)}")
+    print(f"  Exterior images: {len(exterior_images)}")
+    print(f"  Interior images: {len(interior_images)}")
+    print(f"  Location maps:   {len(location_images)}")
+    print(f"  Specs/tables:    {len(specification_tables)}")
+    print(f"  Lifestyle:       {len(lifestyle_images)}")
+    print(f"  Total plans:     {len(plan_results)}")
+    print(f"  Total images:    {len(image_results)}")
+    print(f"  Grand total:     {len(plan_results) + len(image_results)}")
+    print(f"  Time:            {total_time:.1f}s")
+    print(f"  Output:          {out_dir}/")
+    print(f"  plan_data:       {plan_data_file}")
     print(f"{'='*60}\n")
 
     return summary
+
+
+def _append_timing_stats(total_time_s: float, total_pages: int):
+    """Append timing data to web app's timing_stats.json for dynamic estimates."""
+    import datetime
+    stats_file = Path("/root/projects/prop-capture-web/timing_stats.json")
+    try:
+        if stats_file.exists():
+            with open(stats_file, "r") as f:
+                stats = json.load(f)
+        else:
+            stats = {"runs": []}
+
+        stats["runs"].append({
+            "pdf_pages": total_pages,
+            "total_time_s": round(total_time_s, 1),
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        })
+
+        # Keep only last 20 runs
+        stats["runs"] = stats["runs"][-20:]
+
+        with open(stats_file, "w") as f:
+            json.dump(stats, f, indent=2)
+    except Exception as e:
+        # Non-fatal — don't crash the pipeline for timing stats
+        print(f"  (timing stats write failed: {e})")
 
 
 # ---------------------------------------------------------------------------

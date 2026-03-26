@@ -1,7 +1,7 @@
 """
-main.py — PropCapture web app (MVP)
-FastAPI app that accepts PDF uploads, runs the prop-capture v2 pipeline,
-and displays extracted unit plans, master plans, and JSON results.
+main.py — PropCapture web app
+FastAPI app that accepts PDF uploads, runs the prop-capture pipeline,
+and displays extracted plans and all property images (amenity, exterior, interior, etc.).
 """
 
 import sys
@@ -34,8 +34,28 @@ from pipeline import run_pipeline
 BASE_DIR = Path(__file__).parent
 UPLOADS_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "output"
+TIMING_STATS_FILE = BASE_DIR / "timing_stats.json"
 UPLOADS_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+
+def _get_timing_estimate() -> str:
+    """Read timing_stats.json and compute a dynamic time estimate string."""
+    try:
+        if TIMING_STATS_FILE.exists():
+            with open(TIMING_STATS_FILE) as f:
+                stats = json.load(f)
+            runs = stats.get("runs", [])
+            if runs:
+                # Use last 10 runs
+                recent = runs[-10:]
+                avg = sum(r["total_time_s"] for r in recent) / len(recent)
+                lo = int(avg * 0.7)
+                hi = int(avg * 1.3)
+                return f"Typically {lo}–{hi} seconds depending on PDF size"
+    except Exception:
+        pass
+    return "Typically 60–120 seconds"
 
 app = FastAPI(title="PropCapture")
 
@@ -80,7 +100,11 @@ def run_pipeline_thread(job_id: str, pdf_path: str, pdf_name: str):
 
         job_out_abs = OUTPUT_DIR / job_id / pdf_stem  # absolute path to job output
 
-        for plan_list in ("unit_plans", "master_plans", "floor_plans"):
+        for plan_list in (
+            "unit_plans", "master_plans", "floor_plans",
+            "amenity_images", "exterior_images", "interior_images",
+            "location_images", "lifestyle_images", "specification_tables",
+        ):
             for plan in result.get(plan_list, []):
                 if plan.get("file_path"):
                     fp = Path(plan["file_path"])
@@ -89,7 +113,7 @@ def run_pipeline_thread(job_id: str, pdf_path: str, pdf_name: str):
                         rel = fp.relative_to(OUTPUT_DIR)
                         plan["file_path"] = f"/output/{rel}"
                     except ValueError:
-                        # Fallback: extract last 3 path components (subdir/filename)
+                        # Fallback: extract last 2 path components (subdir/filename)
                         # and place under /output/<job_id>/<pdf_stem>/
                         parts = fp.parts
                         plan["file_path"] = f"/output/{job_id}/{pdf_stem}/{parts[-2]}/{parts[-1]}"
@@ -196,6 +220,7 @@ async def status(request: Request, job_id: str):
             "job_id": job_id,
             "pdf_name": job["pdf_name"],
             "elapsed": elapsed,
+            "timing_estimate": _get_timing_estimate(),
         },
     )
 

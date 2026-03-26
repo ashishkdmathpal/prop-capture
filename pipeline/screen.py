@@ -3,6 +3,7 @@ screen.py — Fast text-based page screening to find floor plan candidates.
 
 Returns list of {page_num, page_text, flags, score} for pages that are
 likely to contain unit plans, master plans, or floor plans.
+Also detects image-dominant pages (renders, photos, amenity shots).
 Zero API calls — pure PyMuPDF text extraction + heuristics.
 """
 
@@ -38,11 +39,25 @@ GENERAL_PLAN_KEYWORDS = [
     r"\blayout\b", r"\bplan\b", r"\bseries\b", r"\btower\b", r"\brera\b",
 ]
 
+# NEW: Keywords for specification and location pages that the main screener misses
+SPEC_KEYWORDS = [
+    r"\bspecification\b", r"\bflooring\b", r"\bbathroom\b", r"\bkitchen\b",
+    r"\bpayment plan\b", r"\bmilestone\b", r"\bconstruction linked\b",
+]
+
+LOCATION_KEYWORDS = [
+    r"\b\d+\s*kms?\b", r"\b\d+\s*minutes?\b", r"\bit parks?\b",
+    r"\bhospital\b", r"\bschool\b", r"\bmall\b", r"\bclub\b",
+]
+
 # Thresholds
 CANDIDATE_SCORE_THRESHOLD = 3
 MASTER_PLAN_SCORE_THRESHOLD = 3
 DRAWING_COUNT_THRESHOLD = 500   # pages with >500 drawing ops are likely vector plans
 IMAGE_SIZE_THRESHOLD_KB = 200   # pages with >200KB rendered image but <50 chars text
+IMAGE_PAGE_TEXT_THRESHOLD = 900  # image-dominant pages have less than this many chars
+IMAGE_LARGE_DIM_THRESHOLD = 1000  # images larger than this (px) count as "large"
+IMAGE_LARGE_SIZE_THRESHOLD = 70_000  # images totaling more than this (bytes) count as image-heavy
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +71,8 @@ def _compile_patterns(keyword_list: list[str]) -> list[re.Pattern]:
 _UNIT_PATTERNS = _compile_patterns(UNIT_PLAN_KEYWORDS)
 _MASTER_PATTERNS = _compile_patterns(MASTER_PLAN_KEYWORDS)
 _GENERAL_PATTERNS = _compile_patterns(GENERAL_PLAN_KEYWORDS)
+_SPEC_PATTERNS = _compile_patterns(SPEC_KEYWORDS)
+_LOCATION_PATTERNS = _compile_patterns(LOCATION_KEYWORDS)
 
 
 def _get_drawing_count(page) -> int:
@@ -92,6 +109,84 @@ def _has_large_embedded_image(page, doc) -> bool:
         except Exception:
             pass
     return False
+
+
+def _is_image_page(page, page_num: int, text: str, doc) -> dict | None:
+    """
+    Detect pages dominated by images (renders, photos, amenity shots, interiors).
+
+    These pages are missed by the keyword screener because they have minimal text.
+    Two detection patterns:
+      1. Single large embedded image (>1000px or >100KB) + minimal text
+      2. Many small images totaling >100KB raw (tiled/sliced photo pages) + minimal text
+
+    Real estate brochure PDFs commonly embed photos as many small tiles (30-50 images per page)
+    rather than one large image — this handles both patterns.
+
+    Returns a candidate dict with likely_type='property_image', or None if not an image page.
+    """
+    text_len = len(text.strip())
+
+    # Only catch pages with limited text — spec tables have text AND images
+    # but they're already caught by keyword scoring with SPEC_KEYWORDS
+    if text_len > IMAGE_PAGE_TEXT_THRESHOLD:
+        return None
+
+    images = page.get_images(full=True)
+    if not images:
+        return None
+
+    signals = []
+
+    # Pattern 1: Single large embedded image (>1000px in either dim)
+    has_single_large = False
+    for img in images:
+        width = img[2]
+        height = img[3]
+        if width > IMAGE_LARGE_DIM_THRESHOLD or height > IMAGE_LARGE_DIM_THRESHOLD:
+            has_single_large = True
+            signals.append(f"large_single_image:{width}x{height}")
+            break
+
+    if has_single_large:
+        return {
+            "page_num": page_num,
+            "score": 0,
+            "master_score": 0,
+            "signals": signals + ["image_dominant_page"],
+            "text_snippet": text[:300].strip(),
+            "likely_type": "property_image",
+            "drawing_count": 0,
+            "text_length": text_len,
+        }
+
+    # Pattern 2: Many small images with large total raw size (tiled/sliced photos)
+    # These PDFs tile a single photo into 30-50 small pieces
+    total_raw_size = 0
+    for img in images:
+        try:
+            xref = img[0]
+            raw = doc.extract_image(xref)
+            if raw:
+                total_raw_size += len(raw.get("image", b""))
+        except Exception:
+            pass
+
+    # Threshold: >100KB total raw AND at least 5 images (rules out single-icon pages)
+    if total_raw_size > IMAGE_LARGE_SIZE_THRESHOLD and len(images) >= 5:
+        signals.append(f"tiled_image_page:{len(images)}_imgs:{total_raw_size // 1024}KB")
+        return {
+            "page_num": page_num,
+            "score": 0,
+            "master_score": 0,
+            "signals": signals + ["image_dominant_page"],
+            "text_snippet": text[:300].strip(),
+            "likely_type": "property_image",
+            "drawing_count": 0,
+            "text_length": text_len,
+        }
+
+    return None
 
 
 def _score_page(page, page_num: int, text: str, doc) -> dict | None:
@@ -177,6 +272,17 @@ def _score_page(page, page_num: int, text: str, doc) -> dict | None:
     if _has_large_embedded_image(page, doc):
         master_score += 2
 
+    # --- Spec / location page signals (boost score so they pass threshold) ---
+    spec_hits = sum(1 for p in _SPEC_PATTERNS if p.search(text))
+    if spec_hits >= 2:
+        score += 2
+        signals.append(f"spec_keywords:{spec_hits}")
+
+    location_hits = sum(1 for p in _LOCATION_PATTERNS if p.search(text))
+    if location_hits >= 2:
+        score += 2
+        signals.append(f"location_keywords:{location_hits}")
+
     # --- Preliminary type guess ---
     likely_type = "other"
     if master_score >= MASTER_PLAN_SCORE_THRESHOLD:
@@ -219,11 +325,16 @@ def screen_pages(pdf_path: str) -> dict:
     """
     Analyze every page via text extraction + structural heuristics.
 
+    Two-track screening:
+      Track A (keyword): scores pages by plan/spec/location keywords and vector content
+      Track B (image):   detects pages dominated by large embedded images (renders, photos)
+
     Returns:
     {
-        "candidates": [...],          # all pages meeting threshold (unit + floor plans)
+        "candidates": [...],              # keyword-scored plan pages
         "master_plan_candidates": [...],  # pages likely to be master/site plans
-        "all_candidates": [...],      # union of both lists (deduplicated)
+        "image_candidates": [...],        # NEW: image-dominant pages (renders, photos)
+        "all_candidates": [...],          # union of all three lists (deduplicated)
         "total_pages": 50,
         "screening_time_ms": 150,
         "page_texts": {1: "...", 2: "...", ...}  # all page texts for reuse
@@ -236,7 +347,11 @@ def screen_pages(pdf_path: str) -> dict:
 
     candidates = []
     master_plan_candidates = []
+    image_candidates = []
     page_texts = {}
+
+    # Track which page_nums are already in keyword candidates (to avoid double-adding)
+    keyword_page_nums = set()
 
     for i in range(total_pages):
         page = doc[i]
@@ -244,26 +359,31 @@ def screen_pages(pdf_path: str) -> dict:
         text = page.get_text("text").strip()
         page_texts[page_num] = text
 
+        # Track A: keyword/heuristic scoring
         result = _score_page(page, page_num, text, doc)
-        if result is None:
-            continue
+        if result is not None:
+            keyword_page_nums.add(page_num)
+            if result["master_score"] >= MASTER_PLAN_SCORE_THRESHOLD:
+                master_plan_candidates.append(result)
+            if result["score"] >= CANDIDATE_SCORE_THRESHOLD:
+                candidates.append(result)
 
-        if result["master_score"] >= MASTER_PLAN_SCORE_THRESHOLD:
-            master_plan_candidates.append(result)
-        if result["score"] >= CANDIDATE_SCORE_THRESHOLD:
-            candidates.append(result)
+        # Track B: image-dominant page detection (only for pages NOT already caught by keyword track)
+        if page_num not in keyword_page_nums:
+            img_result = _is_image_page(page, page_num, text, doc)
+            if img_result is not None:
+                image_candidates.append(img_result)
 
     doc.close()
 
     # Sort by score descending
     candidates.sort(key=lambda x: x["score"], reverse=True)
     master_plan_candidates.sort(key=lambda x: x["master_score"], reverse=True)
+    image_candidates.sort(key=lambda x: x["page_num"])
 
-    # Union of all candidate page numbers (deduplicated, sorted)
-    all_page_nums = set(c["page_num"] for c in candidates) | set(c["page_num"] for c in master_plan_candidates)
-    # Build unified list preserving best score info
+    # Union of all three candidate lists (deduplicated, preserving best score info)
     page_map = {}
-    for c in candidates + master_plan_candidates:
+    for c in candidates + master_plan_candidates + image_candidates:
         pn = c["page_num"]
         if pn not in page_map or c["score"] > page_map[pn]["score"]:
             page_map[pn] = c
@@ -274,6 +394,7 @@ def screen_pages(pdf_path: str) -> dict:
     return {
         "candidates": candidates,
         "master_plan_candidates": master_plan_candidates,
+        "image_candidates": image_candidates,
         "all_candidates": all_candidates,
         "total_pages": total_pages,
         "screening_time_ms": elapsed_ms,
@@ -298,6 +419,7 @@ if __name__ == "__main__":
     print(f"Total pages: {result['total_pages']}")
     print(f"Candidates (unit/floor plans): {len(result['candidates'])}")
     print(f"Master plan candidates: {len(result['master_plan_candidates'])}")
+    print(f"Image candidates (renders/photos): {len(result['image_candidates'])}")
     print(f"All candidates: {len(result['all_candidates'])}")
 
     print("\n--- Candidate pages ---")

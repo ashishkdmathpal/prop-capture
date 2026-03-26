@@ -31,7 +31,11 @@
         <span class="stat-label">Floor Plans</span>
       </div>
       <div class="stat">
-        <span class="stat-num">{{ result.total_plans_found }}</span>
+        <span class="stat-num">{{ ((result.amenity_images or []) | length) + ((result.exterior_images or []) | length) + ((result.interior_images or []) | length) + ((result.location_images or []) | length) + ((result.lifestyle_images or []) | length) + ((result.specification_tables or []) | length) }}</span>
+        <span class="stat-label">Property Images</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">{{ (result.total_plans_found or 0) + (result.total_images_found or 0) }}</span>
         <span class="stat-label">Total</span>
       </div>
       <div class="stat">
@@ -161,6 +165,192 @@
       </div>
       {% else %}
       <p class="empty-state">No floor plans found in this brochure.</p>
+      {% endif %}
+    </div>
+
+    <!-- Amenity Images Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Amenity Images</h2>
+        <span class="badge">{{ (result.amenity_images or []) | length }}</span>
+      </div>
+      {% if result.amenity_images %}
+      <div class="plans-grid">
+        {% for img in result.amenity_images %}
+        <div class="plan-card">
+          {% if img.file_path %}
+          <img src="{{ img.file_path }}" alt="{{ img.label or 'amenity' }}" onclick="openLightbox('{{ img.file_path }}')" loading="lazy" />
+          {% else %}
+          <div style="height:160px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem;">No image</div>
+          {% endif %}
+          <div class="plan-info">
+            <span class="plan-type-chip chip-amenity">Amenity</span>
+            <div class="plan-label">{{ img.label or 'unlabeled' }}</div>
+            <div class="plan-meta">
+              {% if img.description %}<span>{{ img.description }}</span>{% endif %}
+              {% if img.confidence %}<span>{{ '🟢' if img.confidence == 'high' else ('🟡' if img.confidence == 'medium' else '🔴') }} {{ img.confidence }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No amenity images found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Exterior Images Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Exterior Images</h2>
+        <span class="badge">{{ (result.exterior_images or []) | length }}</span>
+      </div>
+      {% if result.exterior_images %}
+      <div class="plans-grid">
+        {% for img in result.exterior_images %}
+        <div class="plan-card">
+          {% if img.file_path %}
+          <img src="{{ img.file_path }}" alt="{{ img.label or 'exterior' }}" onclick="openLightbox('{{ img.file_path }}')" loading="lazy" />
+          {% else %}
+          <div style="height:160px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem;">No image</div>
+          {% endif %}
+          <div class="plan-info">
+            <span class="plan-type-chip chip-exterior">Exterior</span>
+            <div class="plan-label">{{ img.label or 'unlabeled' }}</div>
+            <div class="plan-meta">
+              {% if img.description %}<span>{{ img.description }}</span>{% endif %}
+              {% if img.confidence %}<span>{{ '🟢' if img.confidence == 'high' else ('🟡' if img.confidence == 'medium' else '🔴') }} {{ img.confidence }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No exterior images found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Interior Images Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Interior Images</h2>
+        <span class="badge">{{ (result.interior_images or []) | length }}</span>
+      </div>
+      {% if result.interior_images %}
+      <div class="plans-grid">
+        {% for img in result.interior_images %}
+        <div class="plan-card">
+          {% if img.file_path %}
+          <img src="{{ img.file_path }}" alt="{{ img.label or 'interior' }}" onclick="openLightbox('{{ img.file_path }}')" loading="lazy" />
+          {% else %}
+          <div style="height:160px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem;">No image</div>
+          {% endif %}
+          <div class="plan-info">
+            <span class="plan-type-chip chip-interior">Interior</span>
+            <div class="plan-label">{{ img.label or 'unlabeled' }}</div>
+            <div class="plan-meta">
+              {% if img.description %}<span>{{ img.description }}</span>{% endif %}
+              {% if img.confidence %}<span>{{ '🟢' if img.confidence == 'high' else ('🟡' if img.confidence == 'medium' else '🔴') }} {{ img.confidence }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No interior images found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Location Maps Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Location Maps</h2>
+        <span class="badge">{{ (result.location_images or []) | length }}</span>
+      </div>
+      {% if result.location_images %}
+      <div class="plans-grid">
+        {% for img in result.location_images %}
+        <div class="plan-card">
+          {% if img.file_path %}
+          <img src="{{ img.file_path }}" alt="{{ img.label or 'location map' }}" onclick="openLightbox('{{ img.file_path }}')" loading="lazy" />
+          {% else %}
+          <div style="height:160px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem;">No image</div>
+          {% endif %}
+          <div class="plan-info">
+            <span class="plan-type-chip chip-location">Location</span>
+            <div class="plan-label">{{ img.label or 'unlabeled' }}</div>
+            <div class="plan-meta">
+              {% if img.description %}<span>{{ img.description }}</span>{% endif %}
+              {% if img.confidence %}<span>{{ '🟢' if img.confidence == 'high' else ('🟡' if img.confidence == 'medium' else '🔴') }} {{ img.confidence }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No location maps found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Specifications Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Specifications</h2>
+        <span class="badge">{{ (result.specification_tables or []) | length }}</span>
+      </div>
+      {% if result.specification_tables %}
+      <div class="plans-grid">
+        {% for img in result.specification_tables %}
+        <div class="plan-card">
+          {% if img.file_path %}
+          <img src="{{ img.file_path }}" alt="{{ img.label or 'specification' }}" onclick="openLightbox('{{ img.file_path }}')" loading="lazy" />
+          {% else %}
+          <div style="height:160px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem;">No image</div>
+          {% endif %}
+          <div class="plan-info">
+            <span class="plan-type-chip chip-spec">Spec</span>
+            <div class="plan-label">{{ img.label or 'unlabeled' }}</div>
+            <div class="plan-meta">
+              {% if img.description %}<span>{{ img.description }}</span>{% endif %}
+              {% if img.confidence %}<span>{{ '🟢' if img.confidence == 'high' else ('🟡' if img.confidence == 'medium' else '🔴') }} {{ img.confidence }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No specification tables found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Lifestyle Images Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Lifestyle Images</h2>
+        <span class="badge">{{ (result.lifestyle_images or []) | length }}</span>
+      </div>
+      {% if result.lifestyle_images %}
+      <div class="plans-grid">
+        {% for img in result.lifestyle_images %}
+        <div class="plan-card">
+          {% if img.file_path %}
+          <img src="{{ img.file_path }}" alt="{{ img.label or 'lifestyle' }}" onclick="openLightbox('{{ img.file_path }}')" loading="lazy" />
+          {% else %}
+          <div style="height:160px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem;">No image</div>
+          {% endif %}
+          <div class="plan-info">
+            <span class="plan-type-chip chip-lifestyle">Lifestyle</span>
+            <div class="plan-label">{{ img.label or 'unlabeled' }}</div>
+            <div class="plan-meta">
+              {% if img.description %}<span>{{ img.description }}</span>{% endif %}
+              {% if img.confidence %}<span>{{ '🟢' if img.confidence == 'high' else ('🟡' if img.confidence == 'medium' else '🔴') }} {{ img.confidence }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No lifestyle images found.</p>
       {% endif %}
     </div>
 
