@@ -242,7 +242,7 @@ def extract_plan_labels(
     output_dir = Path(output_dir)
     api_key = os.getenv("GROQ_API_KEY")
     doc = fitz.open(pdf_path)
-    MAX_WORKERS = 4
+    MAX_WORKERS = 6
 
     if verbose:
         print(f"  Extracting labels from {len(confirmed_pages)} plan pages at {dpi} DPI (parallel={MAX_WORKERS})...")

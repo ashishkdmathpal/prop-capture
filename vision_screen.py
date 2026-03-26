@@ -239,7 +239,7 @@ def classify_pages(
             batches.append((valid_pages, batch_images))
 
     # Run all batch API calls in parallel
-    MAX_WORKERS = 4
+    MAX_WORKERS = 6
 
     def _process_batch(batch_idx, valid_pages, batch_images):
         t_batch = time.time()

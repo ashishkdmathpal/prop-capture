@@ -47,7 +47,7 @@ def run_pipeline(
     output_base: str = "output",
     dpi: int = 150,
     verbose: bool = True,
-    step_callback=None,
+    step_callback=None,  # callable(step: int, label: str, detail: str = "")
 ) -> dict:
     """
     Full pipeline: PDF -> text screen -> vision screen -> plan + image extraction.
@@ -84,8 +84,11 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # Step 1: Text screening
     # ------------------------------------------------------------------
-    if step_callback:
-        step_callback(1, "Text screening all pages")
+    def _progress(step, label, detail=""):
+        if step_callback:
+            step_callback(step, label, detail)
+
+    _progress(1, "Scanning all pages", f"Analyzing {Path(pdf_path).stem}")
     print("Step 1/3: Text screening...")
     t1 = time.time()
 
@@ -112,9 +115,9 @@ def run_pipeline(
     # ------------------------------------------------------------------
     # Step 2: Vision screening (Groq)
     # ------------------------------------------------------------------
-    if step_callback:
-        step_callback(2, "Classifying pages by content type")
-    print("\nStep 2/3: Vision screening with Groq...")
+    _progress(1, "Scanning all pages", f"Found {len(candidate_page_nums)} pages with content")
+    _progress(2, "Classifying pages", f"Analyzing {len(candidate_page_nums)} pages with AI vision")
+    print("\nStep 2/3: Classifying pages with Groq...")
     t2 = time.time()
 
     pages_dir_arg = pages_dir if pages_dir.exists() else None
@@ -160,8 +163,8 @@ def run_pipeline(
 
     all_image_pages = image_pages + data_pages
 
-    if step_callback:
-        step_callback(3, "Extracting plans + images (parallel)")
+    _progress(2, "Classifying pages", f"Found {len(plan_pages)} plans, {len(all_image_pages)} images")
+    _progress(3, "Extracting details", f"{len(plan_pages)} plans + {len(all_image_pages)} images in parallel")
     print(f"\nStep 3: Extracting plans ({len(plan_pages)} pages) + images ({len(all_image_pages)} pages) in parallel (DPI={dpi})...")
     t3 = time.time()
 
@@ -198,6 +201,8 @@ def run_pipeline(
         plan_results = plan_future.result()
         image_results = image_future.result()
 
+    total_extracted = len([r for r in plan_results if r.get("file_path")]) + len([r for r in image_results if r.get("file_path")])
+    _progress(3, "Extracting details", f"Done — {total_extracted} images extracted")
     elapsed3 = time.time() - t3
 
     log["steps"]["plan_extraction"] = {
