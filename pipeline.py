@@ -99,7 +99,7 @@ def run_pipeline(
         "time_s": round(elapsed1, 2),
         "total_pages": screen_result["total_pages"],
         "candidates": len(candidate_page_nums),
-        "candidate_pages": candidate_page_nums,
+        "pages_scanned": candidate_page_nums,
     }
 
     print(f"  {screen_result['total_pages']} pages scanned in {elapsed1:.1f}s")
@@ -113,7 +113,7 @@ def run_pipeline(
     # Step 2: Vision screening (OpenRouter)
     # ------------------------------------------------------------------
     if step_callback:
-        step_callback(2, "Vision analysis of candidates")
+        step_callback(2, "Classifying pages by content type")
     print("\nStep 2/3: Vision screening with OpenRouter...")
     t2 = time.time()
 
@@ -231,7 +231,7 @@ def run_pipeline(
     summary = {
         "pdf_source": pdf_stem,
         "total_pages": screen_result["total_pages"],
-        "candidate_pages": candidate_page_nums,
+        "pages_scanned": candidate_page_nums,
         "confirmed_plan_pages": [p["page"] for p in plan_pages],
         "confirmed_image_pages": [p["page"] for p in all_image_pages],
         # Plan arrays (existing structure unchanged)
