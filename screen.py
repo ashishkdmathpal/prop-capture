@@ -39,7 +39,7 @@ GENERAL_PLAN_KEYWORDS = [
     r"\blayout\b", r"\bplan\b", r"\bseries\b", r"\btower\b", r"\brera\b",
 ]
 
-# NEW: Keywords for specification and location pages that the main screener misses
+# Keywords for specification and location pages that the main screener misses
 SPEC_KEYWORDS = [
     r"\bspecification\b", r"\bflooring\b", r"\bbathroom\b", r"\bkitchen\b",
     r"\bpayment plan\b", r"\bmilestone\b", r"\bconstruction linked\b",
@@ -350,7 +350,7 @@ def screen_pages(pdf_path: str) -> dict:
     {
         "candidates": [...],              # keyword-scored plan pages
         "master_plan_candidates": [...],  # pages likely to be master/site plans
-        "image_candidates": [...],        # NEW: image-dominant pages (renders, photos)
+        "image_candidates": [...],        # image-dominant pages (renders, photos)
         "all_candidates": [...],          # union of all three lists (deduplicated)
         "total_pages": 50,
         "screening_time_ms": 150,

@@ -1,5 +1,5 @@
 """
-vision_screen.py — Classify candidate pages using OpenRouter vision.
+vision_screen.py — Classify candidate pages using Groq vision.
 
 Renders candidate pages as thumbnails (100 DPI) and sends them in batches
 to llama-4-scout for fast, cheap classification.
@@ -102,12 +102,12 @@ def render_page_thumbnail(
 
 
 # ---------------------------------------------------------------------------
-# OpenRouter API
+# Groq API
 # ---------------------------------------------------------------------------
 
 def _call_classify(api_key: str, page_nums: list[int], image_bytes_list: list[bytes]) -> list[dict]:
     """
-    Send a batch of page images to OpenRouter for classification.
+    Send a batch of page images to Groq for classification.
     Returns list of {page, type, confidence, note}.
     """
     page_list_str = ", ".join(f"Page {p}" for p in page_nums)
@@ -173,7 +173,7 @@ def classify_pages(
     verbose: bool = True,
 ) -> list[dict]:
     """
-    Render and classify candidate pages using OpenRouter vision.
+    Render and classify candidate pages using Groq vision.
 
     Args:
         pdf_path: Path to the PDF file

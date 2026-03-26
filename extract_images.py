@@ -1,7 +1,7 @@
 """
 extract_images.py — Extract structured labels from confirmed property image pages.
 
-Uses OpenRouter vision (llama-4-scout) to identify amenities, exteriors, interiors, etc.
+Uses Groq vision (llama-4-scout) to identify amenities, exteriors, interiors, etc.
 Renders confirmed pages at 150 DPI and saves labeled images to:
   output/<source>/amenity/<label>.jpg
   output/<source>/exterior/<label>.jpg
@@ -84,7 +84,7 @@ def render_page_hires(
 
 
 # ---------------------------------------------------------------------------
-# OpenRouter extraction
+# Groq extraction
 # ---------------------------------------------------------------------------
 
 def _call_extract_image(
@@ -95,7 +95,7 @@ def _call_extract_image(
     page_num: int,
 ) -> dict:
     """
-    Send one image page to OpenRouter for labeling.
+    Send one image page to Groq for labeling.
     Returns structured image metadata dict.
     """
     img_b64 = base64.b64encode(img_bytes).decode()
@@ -215,7 +215,7 @@ def extract_image_labels(
     """
     For each confirmed image page (amenity, exterior, interior, location, lifestyle, spec):
     1. Render at high DPI
-    2. Send image + page text to OpenRouter for labeling
+    2. Send image + page text to Groq for labeling
     3. Get back structured metadata (label, description, amenities_shown, confidence)
     4. Save the image with a descriptive filename in the appropriate subdirectory
 

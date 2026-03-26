@@ -1,7 +1,7 @@
 """
 extract_plans.py — Extract structured labels from confirmed floor plan pages.
 
-Uses OpenRouter vision (llama-4-scout) to identify BHK type, carpet area, tower, etc.
+Uses Groq vision (llama-4-scout) to identify BHK type, carpet area, tower, etc.
 Renders confirmed pages at 150 DPI and saves labeled images to:
   output/<source>/unit-plan/<label>.jpg
   output/<source>/master-plan/<label>.jpg
@@ -87,7 +87,7 @@ def render_page_hires(
 
 
 # ---------------------------------------------------------------------------
-# OpenRouter extraction
+# Groq extraction
 # ---------------------------------------------------------------------------
 
 def _call_extract(
@@ -98,7 +98,7 @@ def _call_extract(
     page_num: int,
 ) -> dict:
     """
-    Send one page to OpenRouter for detailed extraction.
+    Send one page to Groq for detailed extraction.
     Returns structured plan metadata dict.
     """
     img_b64 = base64.b64encode(img_bytes).decode()
@@ -219,7 +219,7 @@ def extract_plan_labels(
     """
     For each confirmed plan page:
     1. Render at high DPI
-    2. Send image + page text to OpenRouter
+    2. Send image + page text to Groq
     3. Get back structured metadata
     4. Save the image with a descriptive filename
 

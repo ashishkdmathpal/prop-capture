@@ -8,9 +8,9 @@ Usage:
 
 Pipeline:
     Step 1: Text screening (screen.py)         — 0 API calls, ~0.1s
-    Step 2: Vision screening (vision_screen.py) — OpenRouter llama-4-scout, ~10-15s
-    Step 3a: Plan extraction (extract_plans.py) — OpenRouter llama-4-scout, ~40s
-    Step 3b: Image extraction (extract_images.py) — OpenRouter llama-4-scout, ~50s
+    Step 2: Vision screening (vision_screen.py) — Groq llama-4-scout, ~10-15s
+    Step 3a: Plan extraction (extract_plans.py) — Groq llama-4-scout, ~40s
+    Step 3b: Image extraction (extract_images.py) — Groq llama-4-scout, ~50s
 
 Output:
     output/<pdf_name>/
@@ -110,11 +110,11 @@ def run_pipeline(
         return {"error": "no_candidates", "log": log}
 
     # ------------------------------------------------------------------
-    # Step 2: Vision screening (OpenRouter)
+    # Step 2: Vision screening (Groq)
     # ------------------------------------------------------------------
     if step_callback:
         step_callback(2, "Classifying pages by content type")
-    print("\nStep 2/3: Vision screening with OpenRouter...")
+    print("\nStep 2/3: Vision screening with Groq...")
     t2 = time.time()
 
     pages_dir_arg = pages_dir if pages_dir.exists() else None
