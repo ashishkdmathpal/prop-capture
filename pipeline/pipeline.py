@@ -38,7 +38,6 @@ load_dotenv("/root/.secrets.env")
 
 from screen import screen_pages
 from vision_screen import classify_pages, PLAN_TYPES, IMAGE_TYPES, DATA_TYPES
-from rule_classifier import classify_pages_rules
 from extract_plans import extract_plan_labels
 from extract_images import extract_image_labels
 
@@ -49,10 +48,9 @@ def run_pipeline(
     dpi: int = 150,
     verbose: bool = True,
     step_callback=None,
-    use_ai: bool = False,
 ) -> dict:
     """
-    Full pipeline: PDF -> text screen -> classify -> plan + image extraction.
+    Full pipeline: PDF -> text screen -> vision screen -> plan + image extraction.
 
     Args:
         pdf_path:      Path to the input PDF file
@@ -112,28 +110,20 @@ def run_pipeline(
         return {"error": "no_candidates", "log": log}
 
     # ------------------------------------------------------------------
-    # Step 2: Page classification
+    # Step 2: Vision screening (OpenRouter)
     # ------------------------------------------------------------------
-    mode_label = "AI-powered" if use_ai else "Rule-based"
     if step_callback:
-        step_callback(2, f"Classifying pages ({mode_label})")
-    print(f"\nStep 2/3: Classifying pages ({mode_label})...")
+        step_callback(2, "Classifying pages by content type")
+    print("\nStep 2/3: Vision screening with OpenRouter...")
     t2 = time.time()
 
-    if use_ai:
-        pages_dir_arg = pages_dir if pages_dir.exists() else None
-        classified = classify_pages(
-            pdf_path=pdf_path,
-            candidate_pages=candidate_page_nums,
-            pages_dir=pages_dir_arg,
-            verbose=verbose,
-        )
-    else:
-        classified = classify_pages_rules(
-            pdf_path=pdf_path,
-            candidate_pages=candidate_page_nums,
-            verbose=verbose,
-        )
+    pages_dir_arg = pages_dir if pages_dir.exists() else None
+    classified = classify_pages(
+        pdf_path=pdf_path,
+        candidate_pages=candidate_page_nums,
+        pages_dir=pages_dir_arg,
+        verbose=verbose,
+    )
 
     plan_pages = [p for p in classified if p.get("type") in PLAN_TYPES]
     image_pages = [p for p in classified if p.get("type") in IMAGE_TYPES]
@@ -141,8 +131,7 @@ def run_pipeline(
     other_pages = [p for p in classified if p.get("type") not in PLAN_TYPES | IMAGE_TYPES | DATA_TYPES]
 
     elapsed2 = time.time() - t2
-    log["classification_mode"] = mode_label
-    log["steps"]["classification"] = {
+    log["steps"]["vision_screen"] = {
         "time_s": round(elapsed2, 2),
         "classified": len(classified),
         "plan_pages": len(plan_pages),
