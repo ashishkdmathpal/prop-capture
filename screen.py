@@ -56,7 +56,7 @@ MASTER_PLAN_SCORE_THRESHOLD = 3
 DRAWING_COUNT_THRESHOLD = 500   # pages with >500 drawing ops are likely vector plans
 IMAGE_SIZE_THRESHOLD_KB = 200   # pages with >200KB rendered image but <50 chars text
 IMAGE_PAGE_TEXT_THRESHOLD = 900  # image-dominant pages have less than this many chars
-IMAGE_LARGE_DIM_THRESHOLD = 1000  # images larger than this (px) count as "large"
+IMAGE_LARGE_DIM_THRESHOLD = 700   # images larger than this (px) count as "large"
 IMAGE_LARGE_SIZE_THRESHOLD = 70_000  # images totaling more than this (bytes) count as image-heavy
 
 
@@ -99,12 +99,12 @@ def _has_large_embedded_image(page, doc) -> bool:
         xref = img[0]
         width = img[2]
         height = img[3]
-        if width > 1500 or height > 1500:
+        if width > 700 or height > 700:
             return True
         # Also check raw size
         try:
             raw = doc.extract_image(xref)
-            if raw and len(raw.get("image", b"")) > 200_000:  # >200KB raw
+            if raw and len(raw.get("image", b"")) > 50_000:  # >50KB raw
                 return True
         except Exception:
             pass
@@ -185,6 +185,23 @@ def _is_image_page(page, page_num: int, text: str, doc) -> dict | None:
             "drawing_count": 0,
             "text_length": text_len,
         }
+
+    # Pattern 3: Near-zero text + any image above 400px — clearly a visual content page
+    # Catches pages where images are moderately sized but text is absent
+    if text_len < 50 and total_raw_size > 20_000:
+        max_dim = max((max(img[2], img[3]) for img in images), default=0)
+        if max_dim > 400:
+            signals.append(f"no_text_with_image:{max_dim}px:{total_raw_size // 1024}KB")
+            return {
+                "page_num": page_num,
+                "score": 0,
+                "master_score": 0,
+                "signals": signals + ["image_dominant_page"],
+                "text_snippet": text[:300].strip(),
+                "likely_type": "property_image",
+                "drawing_count": 0,
+                "text_length": text_len,
+            }
 
     return None
 
