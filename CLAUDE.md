@@ -40,7 +40,7 @@ Step 1: Text screening (screen.py)
  v
 Step 2: Vision screening (vision_screen.py)
   - Renders candidates as 100 DPI thumbnails
-  - Sends in batches of 4 to Groq for classification
+  - Sends in batches of 4 to OpenRouter for classification
   - Classifies 11 types:
       Plans:  unit_plan / master_plan / floor_plan
       Images: amenity_image / exterior_image / interior_image /
@@ -52,7 +52,7 @@ Step 2: Vision screening (vision_screen.py)
  v
 Step 3a: Plan extraction (extract_plans.py)
   - Renders confirmed plan pages at 150 DPI (high quality)
-  - Sends each image + page text to Groq
+  - Sends each image + page text to OpenRouter
   - Extracts: plan type, BHK config, carpet area, tower, series, variant
   - Saves labeled images to output/unit-plan/, master-plan/, floor-plan/
   - Output: structured metadata per plan
@@ -60,7 +60,7 @@ Step 3a: Plan extraction (extract_plans.py)
  v
 Step 3b: Image extraction (extract_images.py)
   - Renders confirmed image+data pages at 150 DPI
-  - Sends each image + page text to Groq
+  - Sends each image + page text to OpenRouter
   - Extracts: label, description, amenities_shown (for amenity), confidence
   - Saves labeled images to output/amenity/, exterior/, interior/, location/, lifestyle/, specification/
   - Output: structured metadata per image
@@ -71,18 +71,18 @@ plan_data.json + all labeled images
 
 ## Models
 
-All vision tasks use **Groq llama-4-scout** (`meta-llama/llama-4-scout-17b-16e-instruct`).
+All vision tasks use **llama-4-scout via OpenRouter** (`meta-llama/llama-4-scout-17b-16e-instruct`).
 - Step 2 (vision screen): batch classification, max_tokens=800
 - Step 3a (plan extraction): detailed labeling per page, max_tokens=600
 - Step 3b (image extraction): label + description per page, max_tokens=400
 
 ## Auth
 
-Groq API key loaded from `/root/.secrets.env` as `GROQ_API_KEY`.
+OpenRouter API key loaded from `/root/.secrets.env` as `OPENROUTER_API_KEY`.
 
 ```bash
 # Verify key is present
-grep GROQ_API_KEY /root/.secrets.env
+grep OPENROUTER_API_KEY /root/.secrets.env
 ```
 
 ## Output Structure
@@ -133,13 +133,13 @@ Benchmarked on Godrej Skyline Brochure (50 pages, 31MB PDF):
 | Step | Time | API Calls |
 |------|------|-----------|
 | Text screen | ~10s | 0 |
-| Vision screen (48 candidates) | ~23s | 12 Groq calls |
-| Plan extraction (16 pages) | ~22s | 16 Groq calls |
-| Image extraction (20 pages) | ~22s | 20 Groq calls |
-| **Total** | **~79s** | **48 calls** |
+| Vision screen (48 candidates) | ~23s | 12 OpenRouter calls |
+| Plan extraction (16 pages) | ~22s | 16 OpenRouter calls |
+| Image extraction (20 pages) | ~22s | 20 OpenRouter calls |
+| **Total** | **~79s** | **48 OpenRouter calls** |
 
 Extracted: 16 plans + 20 property images = 36 pages total (was 16 with plans-only).
-Estimated cost: ~$0.02 per run (Groq pricing).
+Estimated cost: ~$0.02 per run (OpenRouter pricing).
 
 ## Files
 
@@ -147,9 +147,9 @@ Estimated cost: ~$0.02 per run (Groq pricing).
 |------|---------|
 | `pipeline.py` | Main entry point — orchestrates all steps |
 | `screen.py` | Two-track page screener: keyword + image-dominant detection (0 API cost) |
-| `vision_screen.py` | Groq vision classifier — 11 types including amenity/exterior/interior |
-| `extract_plans.py` | Groq extractor — labels and saves floor plan images |
-| `extract_images.py` | Groq extractor — labels and saves property photo images |
+| `vision_screen.py` | OpenRouter vision classifier — 11 types including amenity/exterior/interior |
+| `extract_plans.py` | OpenRouter extractor — labels and saves floor plan images |
+| `extract_images.py` | OpenRouter extractor — labels and saves property photo images |
 | `requirements.txt` | Python dependencies |
 | `ARCHITECTURE.md` | Design rationale and architecture detail |
 | `EXPANSION-PLAN.md` | Plan for the scope expansion (2026-03) |
@@ -160,6 +160,6 @@ Estimated cost: ~$0.02 per run (Groq pricing).
 
 ```bash
 pip install -r requirements.txt
-# Ensure GROQ_API_KEY is in /root/.secrets.env
+# Ensure OPENROUTER_API_KEY is in /root/.secrets.env
 python pipeline.py input/your-brochure.pdf
 ```

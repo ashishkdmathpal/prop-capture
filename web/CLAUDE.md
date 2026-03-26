@@ -98,7 +98,7 @@ Updated automatically at the end of each `run_pipeline()` call.
 
 ## Auth
 
-Groq API key loaded from `/root/.secrets.env` via the pipeline. No additional config needed here.
+OpenRouter API key loaded from `/root/.secrets.env` as `OPENROUTER_API_KEY` via the pipeline. No additional config needed here.
 
 ## Dependencies
 
@@ -108,7 +108,7 @@ uvicorn>=0.23.0
 python-multipart>=0.0.6
 jinja2>=3.1.0
 pymupdf>=1.23.0
-groq>=0.9.0
+requests>=2.28.0
 python-dotenv>=1.0.0
 ```
 
